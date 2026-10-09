@@ -64,18 +64,6 @@ ul{margin:0;padding:0;list-style:none}
 .nav-links a[aria-current="true"]::after{transform:scaleX(1)}
 .nav-cta{font-family:var(--f-mono);font-size:11px;letter-spacing:.16em;text-decoration:none;padding:9px 14px;border:1px solid var(--red);color:var(--fg);transition:background .2s}
 .nav-cta:hover{background:var(--red-soft)}
-.nav-sound{background:none;border:1px solid var(--line-2);color:var(--fg-2);font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;padding:8px 12px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:all .2s;border-radius:0}
-.nav-sound:hover{border-color:var(--fg);color:var(--fg)}
-.nav-sound.playing{border-color:rgba(255,48,56,.4);color:var(--fg)}
-.sound-bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
-.sound-bars i{width:2px;background:var(--red);height:100%;transform-origin:bottom;animation:equalizer .8s ease-in-out infinite alternate}
-.sound-bars i:nth-child(1){height:40%;animation-delay:.1s}
-.sound-bars i:nth-child(2){height:90%;animation-delay:.3s}
-.sound-bars i:nth-child(3){height:60%;animation-delay:.2s}
-.sound-bars i:nth-child(4){height:100%;animation-delay:.4s}
-.nav-sound.muted .sound-bars i{animation:none;height:2px;background:var(--fg-3)}
-.nav-sound.muted .sound-label{color:var(--fg-3)}
-@keyframes equalizer{0%{transform:scaleY(.3)}100%{transform:scaleY(1)}}
 .menu-btn{display:none;margin-left:auto;background:none;border:1px solid var(--line-2);color:var(--fg);width:42px;height:42px;place-items:center;cursor:pointer}
 .progress{position:absolute;left:0;bottom:-1px;height:2px;width:100%;background:var(--red);transform-origin:left;transform:scaleX(0);box-shadow:0 0 10px var(--red-glow)}
 .scene-tag{position:fixed;left:var(--gutter);bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;align-items:center;gap:10px;color:var(--fg-3);pointer-events:none}
@@ -364,8 +352,7 @@ a.v:hover{color:var(--red)}
 }
 @media (max-width:900px){
   .nav-links,.nav-cta{display:none}
-  .nav-sound{margin-left:auto}
-  .menu-btn{display:grid;margin-left:0}
+  .menu-btn{display:grid}
   .nav.open .nav-links{display:flex;position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0;padding:8px var(--gutter) 16px;background:rgba(8,9,11,.96);border-bottom:1px solid var(--line)}
   .nav.open .nav-links a{padding:16px 0;border-bottom:1px solid var(--line);font-size:13px}
   .nav.open .nav-links a::after{left:0;right:auto;width:28px;bottom:10px}
@@ -394,8 +381,6 @@ a.v:hover{color:var(--red)}
   .inv-row{grid-template-columns:minmax(0,1fr);gap:10px}
   .hero-foot .coords{display:none}
   .btn{width:100%;justify-content:space-between}
-  .nav-sound .sound-label{display:none}
-  .nav-sound{padding:8px 10px}
   .chan{grid-template-columns:22px minmax(0,1fr)}
   .chan .copy{grid-column:2;justify-self:start}
   .timeline{padding-left:34px}
@@ -414,7 +399,7 @@ a.v:hover{color:var(--red)}
 <div class="veil" aria-hidden="true"></div>
 <a class="sr-only" href="#about">Skip to content</a>
 
-<audio id="bgAudio" src="MIB.mp3" preload="auto" loop playsinline></audio>
+<audio id="bgAudio" src="MIB.mp3" preload="auto" loop playsinline webkit-playsinline></audio>
 
 <header class="nav" id="nav">
   <div class="wrap nav-in">
@@ -428,12 +413,6 @@ a.v:hover{color:var(--red)}
         <li><a href="#contact">CONTACT</a></li>
       </ul>
     </nav>
-    <button class="nav-sound" id="soundBtn" type="button" aria-label="Toggle background audio" title="Toggle audio">
-      <span class="sound-bars" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-      </span>
-      <span class="mono sound-label">AUDIO: ON</span>
-    </button>
     <a class="nav-cta" href="#contact">INITIATE CONTACT</a>
     <button class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu"><i class="ico" data-lucide="menu"></i></button>
   </div>
@@ -883,67 +862,57 @@ addEventListener("keydown", e => { if (e.key === "Escape" && nav.classList.conta
 // BACKGROUND AUDIO (MIB.mp3)
 // =========================================================
 const bgAudio = $("#bgAudio");
-const soundBtn = $("#soundBtn");
-const soundLabel = soundBtn ? soundBtn.querySelector(".sound-label") : null;
 
 if (bgAudio) {
   bgAudio.currentTime = 0; // Always start from beginning on load/refresh
 
-  function updateSoundUI(isPlaying) {
-    if (!soundBtn) return;
-    if (isPlaying) {
-      soundBtn.classList.remove("muted");
-      soundBtn.classList.add("playing");
-      if (soundLabel) soundLabel.textContent = "AUDIO: ON";
-    } else {
-      soundBtn.classList.add("muted");
-      soundBtn.classList.remove("playing");
-      if (soundLabel) soundLabel.textContent = "AUDIO: OFF";
-    }
-  }
+  let isAudioActive = false;
 
-  function playAudio() {
-    const p = bgAudio.play();
-    if (p && typeof p.then === "function") {
-      p.then(() => {
-        updateSoundUI(true);
-        detachInteraction();
+  function startBackgroundAudio() {
+    if (isAudioActive && !bgAudio.paused) return;
+    const playPromise = bgAudio.play();
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        isAudioActive = true;
+        removeGestureListeners();
       }).catch(() => {
-        updateSoundUI(!bgAudio.paused);
+        // Autoplay blocked by mobile browser; will unlock on first touch/tap
       });
     }
   }
 
-  // Attempt immediate background playback on page load
-  playAudio();
+  // Attempt immediate playback on load
+  startBackgroundAudio();
 
-  // Browser Autoplay Policy fallback: unlock audio on first interaction
-  const triggerEvents = ["click", "touchstart", "keydown", "scroll", "pointerdown"];
-  function handleFirstInteraction() {
+  // Mobile touch/gesture triggers
+  const unlockEvents = ["touchstart", "touchend", "pointerdown", "pointerup", "mousedown", "click", "keydown"];
+
+  function onUserGesture() {
     if (bgAudio.paused) {
-      playAudio();
+      startBackgroundAudio();
     } else {
-      detachInteraction();
+      removeGestureListeners();
     }
   }
-  function detachInteraction() {
-    triggerEvents.forEach(evt => window.removeEventListener(evt, handleFirstInteraction));
-  }
-  triggerEvents.forEach(evt => window.addEventListener(evt, handleFirstInteraction, { passive: true }));
 
-  // Manual toggle button in navbar
-  if (soundBtn) {
-    soundBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (bgAudio.paused) {
-        bgAudio.play();
-        updateSoundUI(true);
-      } else {
-        bgAudio.pause();
-        updateSoundUI(false);
-      }
+  function removeGestureListeners() {
+    unlockEvents.forEach(evt => {
+      window.removeEventListener(evt, onUserGesture, true);
+      document.removeEventListener(evt, onUserGesture, true);
     });
   }
+
+  unlockEvents.forEach(evt => {
+    window.addEventListener(evt, onUserGesture, { capture: true, passive: true });
+    document.addEventListener(evt, onUserGesture, { capture: true, passive: true });
+  });
+
+  // Re-check when returning to tab
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && isAudioActive && bgAudio.paused) {
+      bgAudio.play().catch(() => {});
+    }
+  });
 }
 </script>
 
